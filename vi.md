@@ -85,7 +85,7 @@ Mỗi dịch vụ nền là một tài nguyên. Ví dụ, một cơ sở dữ li
 
 Các tài nguyên có thể được gắn kèm cũng như được tách rời khỏi triển khai một cách tùy ý. Ví dụ, nếu cơ sở dữ liệu của ứng dụng hoạt động lỗi do các vấn đề bởi phần cứng, người quản trị ứng dụng có thể tạo một máy chủ cơ sở dữ liệu mới được khôi phục từ lần backup gần nhất. Cơ sở dữ liệu production hiện tại có thể được gỡ bỏ, và thay thế bởi cơ sở dữ liệu mới được thêm vào - tất cả đều không yêu cầu bất kỳ sự thay đổi nào về code.
 
-#### V. Xây dựng, phát hành, chạy
+#### V. Build, release, run (Xây dựng, phát hành, chạy)
 ###### Phân tách rõ ràng giai đoạn xây dựng và chạy
 
 Một codebase được chuyển thành một triển khai(không phải bản developement) thông qua ba giai đoạn:
