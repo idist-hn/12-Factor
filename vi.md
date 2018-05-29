@@ -71,3 +71,78 @@ Một cách tiếp cận khác với cấu hình là sử dụng các file cấu
 Một khía cạnh khác của quản lý cấu hình là gom nhóm. Đôi khi các ứng dụng gom cấu hình thành các tên nhóm (thường gọi là “các môi trường”) và được đặt tên dựa trên các triển khai cụ thể như môi trường `development`, `test`, và `production` trong Rails. Phương pháp này sẽ không được gọn khi mở rộng: vì khi có nhiều triển khai của ứng dụng được tạo ra, các tên môi trường mới cũng sẽ cần được tạo như `staging` hoặc `qa`. Khi dự án sẽ càng phát triển hơn nữa, các nhà phát triển có thể sẽ thêm các môi trường đặc biệt riêng của họ như `joes-staging`, điều này tạo ra một kết hợp các cấu hình khổng lồ làm cho việc quản lý các triển khai của ứng dụng trở nên vô cùng dễ khó khăn và dễ xảy ra lỗi.
 
 Trong các ứng dụng tuân theo bộ "12 quy chuẩn", env vars đóng vai trò là các điều khiển, mỗi env vars liên kết đầy đủ với các env vars khác. Chúng không vào giờ được nhóm lại với nhau như là các "môi trường", nhưng thay vào đó chúng quản lý riêng biệt cho từng triển khai. Đây là một mô hình tạo nên sự mượt mà khi nâng cấp hay mở rộng vì ứng dụng tự mở rộng thành các triển khai khác trong vòng đời của nó.
+
+#### IV. Dịch vụ nền
+###### Coi và sử dụng các dịch vụ nền như các tài nguyên đính kèm
+
+Một dịch vụ nền là bất cứ dịch vụ nào mà ứng dụng sử dụng nó trong mạng kết nối như một phần của quá trình vận hành thông thường. Ví dụ bao gồm các kho dữ liệu (như MySQL hoặc CouchDB), hệ thống truyền tin/hàng đợi (như RabbitMQ hoặc Beanstalkd), các dịch vụ SMTP cho phép gửi email(như Postfix) và các hệ thống caching (như Memcaches).
+
+Thông thường, các hệ thống lưu trữ như cơ sở dữ liệu và các triển khai runtime của ứng dụng sẽ được quản lý bởi cùng hệ thống quản trị. Ngoài các dịch vụ được quản lý có tính cục bộ này, ứng dụng còn có thể có các dịch vụ được cung cấp và quản lý bởi các bên thứ ba. Ví dụ bao gồm các dịch vụ SMTP (như Postmark), các dịch vụ thu thập ma trận ( như là New Relic hay Loggly), các dịch vụ lưu trữ nhị phân (như là Amazon S3), và thậm chí các dịch vụ sử dụng các API có thể truy cập (như là Twitter, Google Maps, hay Last.fm).
+
+Quy tắc cho ứng dụng tuân theo bộ 12 quy chuẩn không phân biệt các dịch vụ cục bộ hay các dịch vụ cung cấp bởi bên thứ ba. Đối với ứng dụng, cả hai đều là các tài nguyên đi kèm, được truy cập thông qua một URL hay các định vị/ dữ liệu xác thực khác được lưu trữ trong cấu hình. Một triển khai của ứng dụng tuân theo bộ 12 quy chuẩn nên có khả năng cho phép thay thế cơ sở dữ liệu MySQL cục bộ bằng một hệ thống được quản lý bởi một bên thứ ba (như là Amazon RDS) mà không yêu cầu bất kỳ thay đổi nào trong code của ứng dụng. Tương tự, 1 máy chủ SMTP cục bộ có thể được thay thế với một dịch vụ SMTP được cung cấp bởi bên thứ ba (như Postmark) mà không phải thay đổi code. Trong cả 2 trường hợp, chỉ có các tài nguyên xử lý trong cấu hình cần được thay đổi.
+
+Mỗi dịch vụ nền là một tài nguyên. Ví dụ, một cơ sở dữ liệu MySQL là một tài nguyên, hai cơ sở dữ liệu MySQL (sử dụng phân chia tại tầng ứng dụng) được coi là hai tài nguyên riêng biệt. Ứng dụng tuân theo bộ 12 quy chuẩn coi các cơ sở dữ liệu này như là các tài nguyên đi kèm, điều này biểu thị sự phụ thuộc không chặt chẽ (loose coupling) của chúng đối với triển khai mà chúng đi kèm.
+
+Các tài nguyên có thể được gắn kèm cũng như được tách rời khỏi triển khai một cách tùy ý. Ví dụ, nếu cơ sở dữ liệu của ứng dụng hoạt động lỗi do các vấn đề bởi phần cứng, người quản trị ứng dụng có thể tạo một máy chủ cơ sở dữ liệu mới được khôi phục từ lần backup gần nhất. Cơ sở dữ liệu production hiện tại có thể được gỡ bỏ, và thay thế bởi cơ sở dữ liệu mới được thêm vào - tất cả đều không yêu cầu bất kỳ sự thay đổi nào về code.
+
+#### V. Xây dựng, phát hành, chạy
+###### Phân tách rõ ràng giai đoạn xây dựng và chạy
+
+Một codebase được chuyển thành một triển khai(không phải bản developement) thông qua ba giai đoạn:
+
+- Giai đoạn xây dựng là một quá trình chuyển đổi mà nó chuyển hóa một code repo thành một tập các thực thi, được gọi là build. Sử dụng một phiên bản code tại một commit cụ thể bởi quá trình triển khai, bước xây dựng sẽ lấy về các phụ thuộc của vendors và biên dịch các file nhị phân và asets.
+- Giai đoạn phát hành sẽ sử dụng các tập thực thi mà được tạo ra từ giai đoạn xây dựng và kết hợp chúng với cấu hình triển khai hiện tại. Kết quả của bản phát hành sẽ bảo gồm cả các tập thực thi và cấu hình và nó đã sẵn sàng cho việc thực thi ngay lập tức trong môi trường thực thi..
+- Giai đoạn chạy (cũng được gọi là "thời gian chạy") chạy ứng dụng trong môi trường thực thi, bằng cách chạy một tập các tiến trình của ứng dụng đối với một bản phát hành được chỉ định.
+
+Ứng dụng tuân theo bộ 12 quy chuẩn sử dụng tách biệt rõ ràng giữa các giai đoạn xây dựng, phát hành và chạy. Ví dụ, ta không sửa đổi code trong thời gian chạy, vì ta không có cách nào để truyền những thay đổi đó trở về giai đoạn xây dựng cả.
+
+Các công cụ triển khai thường sẽ cung cấp các công cụ quản lý phát hành, đáng chú ý nhất là khả năng có thể roll back về bản phát hành trước đó. Ví dụ công cụ triển khai Capistrano lưu các bản phát hành trong một thư mục con gọi là `releases`, tại đó, bản phát hành hiện tại là một liên kết tượng trưng tới thư mục phát hành hiện tại. Lệnh `rollback` cho phép roll back về bản phát hành trước một cách dễ dàng.
+
+Mỗi bản phát hành nên có một ID phát hành duy nhất, như là mốc thời gian của bản phát hành (ví dụ `2011-04-06-20:32:17`) hay một số tự tăng (như `v100`). Các bản phát hành có thể được hình dung như là các bản ghi được thêm cuối vào một sổ cái và một bản phát hành không thể chỉnh sửa khi nó đã được tạo ra. Bất kỳ thay đổi nào đều phải tạo ra một bản phát hành mới.
+
+Các bản xây dựng sẽ được khởi tạo bởi nhà phát triển ứng dụng mỗi khi code mới được triển khai. Ngược lại, thời gian thực thi chạy có thể tự động xảy ra trong một số trường hợp như khi server khởi động lại, hoặc một tiến trình crash được khởi động lại bởi trình quản lý tiến trình. Vì thế, giai đoạn chạy cần hạn chế càng nhiều các thành phần di chuyển càng tốt, vì các vấn đề làm ngăn chặn việc hoạt động ứng dụng có thể xảy ra bất kỳ lúc và làm hỏng hệ thống khi không có developer sẵn sàng. Quá trình xây dựng có thể phức tạp hơn, vì các lỗi luôn có thể xảy ra đối với một nhà phát triển đang thực hiện việc triển khai.
+
+#### VI. Các tiến trình
+###### Thực thi ứng dụng thành dạng một hay nhiều các tiến trình không trạng thái
+
+Ứng dụng được thực thi trong môi trường thực thi bằng một hoặc nhiều các tiến trình.
+
+Trong trường hợp đơn giản nhất, code là một script độc lập, môi trường thực thi là laptop cục bộ của developer với ngôn ngữ thời gian chạy đã được cài đặt, và tiến trình được thực hiện thông qua dòng lệnh (ví dụ, `python my_script.py`). Mặt khác, một triển khai production của một ứng dụng phức tạp có thể sử nhiều loại tiến trình, khởi tạo từ 0 hoặc có thể có nhiều hơn các tiến trình chạy.
+
+Các tiến trình tuân theo bộ 12 quy chuẩn có dạng không trạng thái và không chia sẻ. Bất kỳ dữ liệu nào cần lưu trữ đều phải được lưu trong một dịch vụ lưu trữ có trạng thái, thường là một cơ sở dữ liệu.
+
+Bộ nhớ hoặc filesystem của tiến trình có thể được sử dụng như là một cache nhỏ gọn, đơn chiều. Ví dụ, việc tải một file lớn, thao tác trên đó, và lưu các kết quả sau khi thao tác vào trong cơ sở dữ liệu. Ứng dụng tuân theo bộ 12 quy chuẩn không bao giờ giả định bất cứ thứ gì được cache trong bộ nhớ hay trên đĩa sẽ khả dụng trong công việc trong tương lai - với nhiều tiến trình của mỗi loại đang chạy, khả năng cao là một yêu cầu trong tương lai sẽ được phục vụ bởi một tiến trình khác. Ngay cả khi đang chạy duy nhất một tiến trình, một restart (kích hoạt bởi triển khai của code hoặc thay đổi của cấu hình hay môi trường thực thi chuyển tiến trình sang một vị trí vật lí khác) thường sẽ xóa sạch tất cả trạng thái cục bộ (ví dụ như bộ nhớ và filesystem).
+
+Các đóng gói asset như django-asetpackager sử dụng filesystem như là bộ nhớ đệm cho các asset được biên dịch. Một ứng dụng tuân theo bộ 12 quy chuẩn có xu hướng thực hiện việc biên dịch này trong suốt giai đoạn xây dựng. Các trình đóng gói asset như Jammit và asset pipeline Rails có thể được cấu hình thành các asset package trong giai đoạn xây dựng.
+
+Một vài hệ thống web phụ thuộc vào các “sticky sessions” - đó là việc caching các dữ liệu của phiên của người trong bộ nhớ của tiến trình của ứng dụng và đợi các yêu cầu trong tương lai đền từ cùng một người sẽ được điều hướng tới cùng một tiến trình. Sticky sesions là một vi phạm của bộ 12 quy chuẩn và không bao giờ nên sử dụng hoặc phụ thuộc vào nó. Các dữ liệu trang thái phiên là một gỉai pháp thay thế tốt cho các kho dữ liệu mà trong hệ thống có quy định giới hạn về thời gian, như là Memcaches hay Redis.
+
+
+#### VII. Kết nối cổng
+###### Cung cấp các dịch vụ thông qua cổng kết nối
+
+Các ứng dụng web đôi khi được thực thi bên trong webserver container. Ví dụ, các ứng dụng php có thể chạy như là một module bên trong Apache HTTPD, hay các ứng dụng Java có thể chạy bên trong Tomcat.
+
+Ứng theo tuân theo bộ 12 quy chuẩn hoàn toàn độc lập và không phụ thuộc vào các runtime injection của 1 webserver trong môi trường thực thi để tạo ra một dịch vụ web-facing. Ứng dụng web cung cấp HTTP như một dịch vụ bằng cách kết nối với một cổng, và lắng nghe các yêu cầu tới từ cổng đó.
+
+Trong môi trường phát triển cục bộ, các developer truy cập vào một URL dạng `http://localhost:5000/` để sử dụng các dịch vụ cung cấp bởi ứng dụng của họ. Trong triển khai, tầng điều hướng xử lý các yêu cầu điều hướng từ một tên miền có tính public đến các tiến trình web được gắn liền với cổng.
+
+Điều này thường được cài đặt bằng các sử dụng các khai báo phụ thuộc để thêm một thư viện webserver vào ứng dụng, như là Tornado cho Python, Thin cho Ruby hoặc Jetty cho Java và các ngôn ngữ chuẩn JVM khác. Điều này xảy ra hoàn toàn trong không gian người dùng, đó là, bên trong code của ứng dụng. Các quy ước với môi trương thực thi được kết nối tới một cổng để xử lý các yêu cầu.
+
+HTTP không phải dịch vụ duy nhất có thể được cung cấp bằng cách kết nối qua cổng. Gần đây thì bất kỳ loại phần mềm máy chủ nào cũng có thể chạy thông qua một tiến trình kết nối với một cổng và đợi các yêu cầu. Các ví dụ bao gồm ejabberd (XMPP), và Redis (giao thức Redis).
+
+Cần lưu ý rằng phương pháp kết nối cổng cũng có nghĩa là một ứng dụng có thể trở thành một dịch vụ nền cho một ứng dụng khác, bằng cách cung cấp URL cho ứng dụng nền như một tài nguyên để xử lý trong cấu hình dành cho ứng dụng sử dụng.
+
+#### VIII. Xử lý đồng thời
+###### Mở rộng thông qua mô hình tiến trình
+
+Bất kỳ chương trình máy tính nào, khi đã chạy, được đại diện bởi một hoặc nhiều hơn các tiến trình. Các ứng dụng web có rất nhiều hình thức thực thi tiến tình. Ví dụ, các tiến trình PHP chạy như các tiến trình con của Apache, được khởi tạo theo yêu cầu tầm quan trọng theo số lượng của lượng request. Các tiến trình Java lại có một cách tiếp cận đối ngược, với  JVM cung cấp một uberprocess lớn lưu trữ khối tài nguyên hệ thống (CPU và bộ nhớ) lúc khởi động, với xử lý đồng thời được quản lý nội bộ thông qua các luồng. Trong cả 2 trường hợp, các tiến trình chạy chỉ hiển thị một cách tối giản tới các người lập trình của ứng dụng.
+
+Trong bộ 12 quy chuẩn, các tiến trình là các "công dân ở lớp đầu tiên". Các tiến trình trong ứng dụng tuân theo bộ 12 quy chuẩn tuân theo mô hình tiến trình unix để chạy các dịch vụ nền (daemons). Sử dụng mô hình này, developer có thể thiết kế ứng dụng của họ để xử lý các khối lượng công việc khác nhau bằng cách giao mỗi loại công việc cho một loại tiến trình. Ví dụ các yêu cầu HTTP có thể được xử lý bằng một tiến trình web, và các công việc nền tốn nhiều thời gian được xử lý bởi các tiến trình worker.
+
+Điều này không loại trừ các tiến trình độc lập khỏi việc xử lý các kênh ghép nội bộ của chúng, thông qua các luồng bên trong thời gian chạy của VM, hoặc mô hình bất đồng bộ/sự kiện được tìm thấy trong các công cụ như là EventMachine, Twisted, hay Node.js. Nhưng một VM độc lập có thể mở rộng rất lớn (mở rộng theo chiều dọc), do vậy ứng dụng cũng phải có khả năng cung cấp nhiều tiến trình chạy trên nhiều máy vật lý.
+
+Mô hình tiến trình thực sự hiệu quả khi ta quan tâm đến vấn đề mở rộng. Nguyên tắc không chia sẻ, có thể phân chia theo chiều ngang của các tiến tình tuân theo bộ 12 quy chuẩn có nghĩa là thêm nhiều xử lý đồng thời là một hoạt động đơn giản và đáng tin cậy, ổn định. Mảng các loại tiến trình và số lượng tiến trình của mỗi loại được gọi là hệ thống tiến trình.
+
+Các tiến trình của ứng dụng tuân theo bộ 12 quy chuẩn nền không bao giờ được chạy nền hóa hoặc viết ra các file PID. Thay vào đó, sử dụng trình quản lý tiến trình của hệ điều hành (như là systemd, một trình quản lý tiến trình phân tán trên nền tảng đám mây, hay một công cụ như Foreman trong development) để quản lý các luồng ra, các phản hồi đối với các tiến trình lỗi, và xử lý các restart và shutdown được tạo bởi người dùng.
+
