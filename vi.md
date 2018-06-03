@@ -146,3 +146,92 @@ Mô hình tiến trình thực sự hiệu quả khi ta quan tâm đến vấn �
 
 Các tiến trình của ứng dụng tuân theo bộ 12 quy chuẩn nền không bao giờ được chạy nền hóa hoặc viết ra các file PID. Thay vào đó, sử dụng trình quản lý tiến trình của hệ điều hành (như là systemd, một trình quản lý tiến trình phân tán trên nền tảng đám mây, hay một công cụ như Foreman trong development) để quản lý các luồng ra, các phản hồi đối với các tiến trình lỗi, và xử lý các restart và shutdown được tạo bởi người dùng.
 
+
+#### IX. Tính khả dụng
+###### Tối đa hóa sức mạnh của ứng dụng bằng cách áp dụng fast startup và graceful shutdown (khởi động nhanh và tắt hợp lý)
+
+Các process của ứng dụng tuân theo bộ 12 quy chuẩn phải có tính khả dụng, nghĩa là chúng có thể khởi động hoặc kết thúc tại bất kỳ thời điểm nào. Điều này tạo điều kiện cho elastic scaling (mở rộng một cách mềm dẻo), gíup việc deploy code và các config diễn ra nhanh chóng, và tạo ra sự chắc chắn, ổn định của các production deploy.
+
+Các process cần giảm thiểu thời gian khởi động. Lý tưởng nhất là một process chỉ nên mất vài giây kể từ lúc câu lệnh được thực thi cho tới khi process đã ở trạng thái chạy và sẵn sàng tiếp nhận các yêu cầu. Thời gian khởi động ngắn mang lại sự nhanh chóng và ổn định trong quá trình release và mở rộng (scaling up) vì trình quản lý process có thể chuyển các process đến các máy vật lý mới dễ dàng hơn khi nó đã được đảm bảo.
+
+Các process được gracefully shutdown khi chúng nhận được một tín hiệu `SIGTERM` từ trình quản lý process. Với một tiến trình web, graceful shutdown đạt được bằng cách dừng việc lắng nghe các service port (do đó nó sẽ từ chối bất cứ yêu cầu mới nào), cho phép bất cứ yêu cầu hiện tại nào được hoàn thành rồi thoát. Ý tưởng trong mô hình này là thời gian của các HTTP request sẽ ngắn(không nhiều hơn vài giây), hoặc trong trường thời gian là dài, client nên liên tục cố gắng kết nối lại khi kết nối bị mất.
+
+Với một worker process, graceful shutdown đạt được bằng cách trả công việc hiện tại về work queue. Ví dụ, trên RabbitMQ, worker có thể gửi một `NACK`; trên Beanstalkd, công việc tự động trả về quêu mỗi khi một worker ngắt kết nối. Các hệ thống dựa trên khóa (lock-based) như Delayed Job cần đảm bảo việc release khóa trên công việc hiện tại. Ý tưởng trong mô hình này là tất cả các công việc có thể gọi lại, điều này có thể đạt được bằng cách gom các kết quả trong một giao dịch lại, hoặc khiến tiến trình trở nên bất biến.
+
+Các process cũng cần có tính ổn định trước những sự cố bất ngờ như trong trường hợp lỗi hỏng gây ra do phần cứng. Dù đây thường là điều ít xảy ra hơn so với một graceful shutdown với `SIGTERM`, tuy nhiên nó vẫn có khả năng xảy ra. Một cách tiếp cận được đề xuất là sử dụng một hệ thống queueing backend mạnh mẽ như Beanstalkd, nó sẽ trả các công việc về hàng chờ khi client bị ngắt kết nối hoặc time out. Dù cho sử dụng cách nào, một ứng dụng tuân theo bộ 12 quy chuẩn được thiết kế để xử lý những kết thúc (terminators) khó đoán và xấu xí. Các thiết kế mà luôn bị crash đưa khái niệm này vào kết luận logic của nó.
+
+#### X. Dev/prod parity (Sự tương đồng trong giai đoạn dev/prod)
+###### Duy trì sự tương đồng giữa giai đoạn development, staging, và production
+
+Từ trước đến nay, luôn tồn tại khoảng cách nhất định giữa giai đoạn development (một developer tạo các chỉnh sửa trực tiếp tới các deploy cục bộ của ứng dụng) và production (một triển khai đang chạy của ứng dụng được truy cập bởi các người dùng cuối). Những khoảng cách này được mô tả trong 3 đặc điểm sau:
+
+- Khoảng cách về thời gian: Một developer có thể mất vài ngày, vài tuần, hay thâm chí vài tháng làm việc với code trước khi chuyển sang giai đoạn production.
+- Khoảng cách về con người: Các developer viết code, các kĩ sư Ops deploy chúng.
+- Khoảng cách về tool: các developer có thể sử dụng một stack như Nginx, SQLite, và OS X, trong khi bản triển khai của production lại sử dụng Apache, MySQL, và Linux.
+
+Bộ 12 quy chuẩn được thiết kế để duy trì khả năng deploy liên tục của ứng dụng bằng cách thu hẹp khoảng cách giữa giai đoạn development và production. Hãy cùng xem xét lại 3 yếu tố tạo ra khoảng cách được mô tả bên trên:
+
+- Thu hẹp khoảng cách về thời gian: Một developer có thể chỉ mất vài giờ hoặc vài phút để viết code và deploy nó.
+- Thu hẹp khoảng cách về con người: Những developer viết code phải có sự tham gia và liên quan tới việc deploy nó và theo dõi các hoạt động của nó trong production.
+- Thu hẹp khoảng cách về tool: Tối đa hóa sự tương đồng giữa giai đoạn development và production.
+
+Tổng kết lại những điều trên trong bảng dưới đây:
+
+|  |  Ứng dụng cổ điển |  Ứng dụng tuân theo bộ 12 quy chuẩn |
+| ------------- |:-------------:| -----:|
+| Thời gian giữa các deploy |  Hàng tuần |  Hàng giờ |  
+| Người viết code và người deploy code |  Những người khác nhau |  Cùng người |  
+| Các môi trường dev và production |  Khác nhau |  Giống nhau nhất có thể | 
+
+[Các dịch vụ nền][3], như là cơ sở dữ liệu của ứng dụng, hệ thống hàng đợi, hoặc bộ nhớ đệm, là những thành phần rất quan trọng mà sự tương đồng giữa giai đoạn dev/prod cần lưu ý. Nhiều ngôn ngữ cho phép các thư viện đơn giản hóa việc truy cập đến các dịch vụ nền, bao gồm _adapters_ cho tới các loại khác nhau của dịch vụ. Một số ví dụ được cho trong bảng dưới đây.
+
+
+| Loại |  Ngôn ngữ |  Thư viện |  Adapters |  
+| ------------- |:-------------:| -----:|-----:|
+| Database |  Ruby/Rails |  ActiveRecord |  MySQL, PostgreSQL, SQLite |  
+| Queue |  Python/Django |  Celery |  RabbitMQ, Beanstalkd, Redis |  
+| Cache |  Ruby/Rails |  ActiveSupport::Cache |  Memory, filesystem, Memcached | 
+
+Các developers đôi khi sẽ thích thú với việc sử dụng các dịch vụ nền nhẹ trong các môi trường local của họ, trong khi các dịch vụ nền mạnh mẽ và ổn định hơn sẽ được sử dụng trong môi trường production. Ví dụ, sử dụng SQLite local và PostgreSQL trong production; hay bộ nhớ local process cho việc caching trong development và Memcaches trong production.
+
+**Developer tuân theo bộ 12 quy chuẩn sẽ không sử dụng các dịch vụ nền khác nhau giữa giai đoạn development và production**, thậm chí khi các adapter về mặt lý thuyết cũng đã loại bỏ sự khác biệt giữa các dịch vụ nền. Sự khác biệt giữa các dịch vụ nền đồng nghĩa những sự không tương thích nhỏ nhặt có thể xảy ra, điều này khiến code chạy và test tốt trong development hoặc staging có thể bị lỗi ở production. Những loại lỗi này tạo ra những xung đột và làm cản trở triển hoạt động deploy liên tục. Ảnh hưởng của lỗi này và những hậu quả của nó tác động lên việc deploy liên tục là rất lớn khi ta xét đến tổng thời gian của các lỗi trên vòng đời của một ứng dụng.
+
+Các dịch vụ local gọn nhẹ giờ ngày càng trở nên kém hấp dẫn hơn so với ngày trước. Các dịch vụ nền hiện đại như Memcaches, PostgreSQL, và RabbitMQ không khó để cài đặt và chạy nhờ vào các hệ thống packaging hiện đại, như [Homebrew][4] và [apt-get][5]. Ngoài ra, các provisioning tool (tool chuẩn bị cho hệ thống) như [Chef][6] và [Puppet][7] đã được kết hợp với các môi trường máy ảo nhẹ như[Docker][8] và [Vagrant][9] cho phép các developer chạy các môi trường local gần như tương tự với các môi trường producion. Chi phí để cài đặt và sử dụng những hệ thống này là thấp nếu so với những lợi ích mà sự tương đồng hóa giai đoạn developemnt, production và khả năng deploy liên tục mang lại.
+
+Các adapters sử dụng cho các dịch vụ sao lưu khác nhau vẫn còn gía trị, bởi chúng tạo cổng tới các dịch vụ nền mới một cách dễ dàng. Tuy nhiên tất cả các deploy của ứng dụng (môi trường của dev, staging, production) nên sử dụng cùng một loại và một phiên bản cho mỗi một dịch vụ nền.
+
+#### XI. Logs
+###### Coi các logs như các luồng sự kiện
+Các log sẽ cho ta biết được hoạt động của ứng dụng đang chạy. Trong các môi trường hướng máy chủ chúng thường được viết vào một file trên đĩa (một "logfile"), tuy nhiên đó chỉ là định dạng đầu ra.
+
+Các log là luồng sự kiện được tổng hợp lại, các sự kiện có thứ tự thời gian được thu thập từ các luồng đầu ra của tất cả các process đang chạy và các dịch vụ nền. Log ở dạng thô thường là định dạng văn bản với một sự kiện mỗi dòng (mặc dù backtraces từ các exception có thể trải trên nhiều dòng). Các log không có khởi đầu và kết thúc cố định, nhưng luồng thì liên tục có chừng nào ứng dụng còn hoạt động.
+
+Một ứng dụng tuân theo bộ 12 quy chuẩn không bao giờ quan tâm đến các luồng đầu ra của routing hay storage. Nó không nên thử viết vào hay quản lý các file log. Thay vào đó, mỗi process đang chạy sẽ tự viết các luồng sự kiện, luồng đệm của chúng vào sdtout. Trong quá trình local development, các developer sẽ thấy luồng này ở màn hình terminal của họ để quan sát hoạt động của ứng dụng. 
+
+Trong các deploy của staging hay production, mỗi luồng process sẽ được kiểm soát bởi môi trường thực thi, chúng được đối chiếu với tất cả các luồng khác của ứng dụng, và được điều hướng đến một hoặc nhiều các điểm cuối để hiển thị và lưu trữ lâu dài. Những thư mục lưu trữ này, ứng dụng sẽ không thể nhìn thấy hoặc cấu hình được, và thay vào đó chúng hoàn toàn được quản lý bởi môi trường thực thi. Bộ điều hướng log mã nguồn mở (Logplex và Fluentd) phù hợp với mục đích này.
+
+Luồng sự kiện cho một ứng dụng có thể được điều hướng đến một file, hoặc được theo dõi thông qua lệnh tail thời gian thực trong một terminal. Quan trọng nhất, luồng có thể được gửi đến một log được đánh chỉ mục và hệ thống phân tích như Splunk, hoặc một hệ thống data warehousing như Hadoop/Hive. Những hệ thống này mang lại sự linh hoạt và khả năng theo dõi các hoạt động của ứng dụng qua thời gian, bao gồm:
+
+- Tìm các sự kiện cụ thể trong quá khứ.
+- Vẽ độ thị quy mô lớn theo các tiêu chí(ví dụ như số yêu cầu mỗi phút)
+- Các cảnh báo được bật và sẵn sàng dựa trên heuristic được định nghĩa bởi người dùng (ví dụ như là một cảnh báo khi số lượng lỗi mỗi phút vượt quá một ngưỡng cụ thể).
+
+#### XII. Admin processes
+###### Chạy các công việc admin/quản lý như là các process chạy-một-lần
+
+Process formation (hệ thống process) là một mảng các process được sử dụng để thực hiện các công việc định kỳ của ứng dụng (như xử lý các yêu cầu của web) khi nó đang chạy. Một cách riêng biệt, các developers sẽ mong muốn thực hiện các công việc quản lý hay bảo trì một lần cho ứng dụng, như là:
+
+- Chạy database migrations (ví dụ `manage.py migrate` trong Django, `rake db:migrate` trong Rails).
+- Chạy một console (REPL shell) để chạy code tùy ý hoặc xem xét các mô hình của ứng dụng đối với cơ sở dữ liệu thực tại. Hầu hết các ngôn ngữ cung cấp một REPL bằng cách chạy trình thông dịch mà không cần tham số (ví dụ `python` hay `perl`) hoặc trong vài trường hợp có một câu lênh tách rời (như `irb` cho Ruby, `rails console` cho Rails).
+- Run script "chạy một lần" đối với repo của ứng dụng (e.g. `php scripts/fix_bad_records.php`).
+
+Những process admin chạy một lần nên được chạy trong môi trường mà giống với môi trường chạy các process dài của ứng dụng. Chúng chạy với mỗi release, sử dụng cùng một codebase và cấu hình như bất cứ process nào chạy với release đó. Code admin phải đi kèm với code ứng dụng để tránh các vấn đề về đồng bộ.
+
+Các kĩ thuật tách biệt các dependency có nên được sử dụng đối với tất cả các loại process. Ví dụ, nếu process của web Ruby sử dụng lệnh `bundle exec thin start`, sau đó database migration nên sử dụng `bundle exec rake db:migrate`. Tương tự như vậy, một chương trình Python sử dụng Virtualenv nên sử dụng vendored `bin/python` để chạy cả Tornado webserver và bất cứ tiến trình admin `manage.py` nào.
+
+Bộ 12 quy chuẩn đặc biệt phù hợp với ngôn ngữ cung cấp REPL shell, điều này làm việc chạy các script một-lần trở nên dễ dàng hơn. Trong local deploy, các developers kích hoạt các admin process chạy một-lần bằng các lệnh shell trực tiếp bên trong thư mục checkout của ứng dụng. Trong production deploy, các developers có thể sử dụng ssh hay các cơ chế thực thi các lệnh một cách remote khác để chạy một tiến trình mà được cung cấp bởi môi trường thực thi của	deploy.
+
+
+
+
+
